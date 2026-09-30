@@ -28,6 +28,10 @@ type Match struct {
 //
 // Add fingerprints, then query with Near or group the whole set with Clusters. An
 // Index is not safe for concurrent Add; build it, then read.
+//
+// The zero value is not usable: always construct via [NewIndex] or [LoadIndex].
+// A zero-value Index accepts Add calls (Len grows) but never indexes anything
+// into a band table, so Near and Clusters silently report no matches for it.
 type Index struct {
 	k      int
 	bounds []uint             // block bit boundaries, len k+2

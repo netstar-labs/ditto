@@ -63,12 +63,18 @@ func fingerprint(args []string) error {
 	if err != nil {
 		return err
 	}
-	w := bufio.NewWriter(os.Stdout)
-	defer w.Flush()
+	return writeFingerprints(os.Stdout, docs, f)
+}
+
+func writeFingerprints(out io.Writer, docs []doc, f ditto.Featurizer) error {
+	w := bufio.NewWriter(out)
 	for _, d := range docs {
 		fmt.Fprintf(w, "%s\t%s\n", f.Of(d.text), d.id)
 	}
-	return nil
+	// bufio.Writer latches the first write error and returns it from every
+	// subsequent call including Flush, so checking Flush's return here is
+	// sufficient to surface a failed write instead of silently truncating.
+	return w.Flush()
 }
 
 func cluster(args []string) error {
@@ -89,16 +95,21 @@ func cluster(args []string) error {
 		ix.Add(d.id, f.Of(d.text))
 	}
 	clusters := ix.Clusters(*k, *min)
-	w := bufio.NewWriter(os.Stdout)
-	defer w.Flush()
-	fmt.Fprintf(w, "%d document(s), %d near-duplicate cluster(s) at k=%d:\n", ix.Len(), len(clusters), *k)
+	return writeClusters(os.Stdout, ix, clusters, *k)
+}
+
+func writeClusters(out io.Writer, ix *ditto.Index, clusters [][]string, k int) error {
+	w := bufio.NewWriter(out)
+	fmt.Fprintf(w, "%d document(s), %d near-duplicate cluster(s) at k=%d:\n", ix.Len(), len(clusters), k)
 	for i, g := range clusters {
 		fmt.Fprintf(w, "\n[%d] %d members\n", i+1, len(g))
 		for _, id := range g {
 			fmt.Fprintf(w, "  %s\n", id)
 		}
 	}
-	return nil
+	// See writeFingerprints' Flush comment: this surfaces a failed write instead
+	// of silently truncating output with exit code 0.
+	return w.Flush()
 }
 
 // ---- input gathering -------------------------------------------------------
@@ -135,6 +146,20 @@ func gather(paths []string) ([]doc, error) {
 		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return err
+			}
+			if d.Type()&fs.ModeSymlink != 0 {
+				// A symlink's DirEntry is never IsDir (WalkDir doesn't follow
+				// it to classify), so a symlink to a directory would otherwise
+				// reach ReadFile below and fail with "is a directory" — which
+				// aborts the WHOLE walk, discarding every doc already
+				// gathered, for one link anywhere in the tree. Resolve it: a
+				// symlink to a regular file is still read (matches a plain
+				// file entry); a symlink to a directory, or a broken one, is
+				// skipped rather than treated as fatal.
+				target, statErr := os.Stat(path)
+				if statErr != nil || target.IsDir() {
+					return nil
+				}
 			}
 			b, rerr := os.ReadFile(path)
 			if rerr != nil {
