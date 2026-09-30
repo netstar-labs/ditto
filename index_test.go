@@ -92,6 +92,45 @@ func TestIndexExactDupAtK0(t *testing.T) {
 	}
 }
 
+// TestUnionFind exercises every branch of union directly: already-same-root
+// (no-op), rank[a]<rank[b] (swap so the higher-rank root wins), rank[a]>rank[b]
+// (no swap), and the tie-break that increments rank.
+func TestUnionFind(t *testing.T) {
+	u := newUnionFind(6)
+
+	// Already the same root: no-op.
+	u.union(0, 0)
+	if u.find(0) != 0 {
+		t.Fatalf("self-union changed root: %d", u.find(0))
+	}
+
+	// Build a rank-2 tree at root 1: union(1,2) then union(1,3) via ties, so
+	// rank[1] becomes 2 while 4/5 start at rank 0.
+	u.union(1, 2) // tie (both rank 0) -> root becomes rank 1
+	u.union(3, 1) // rb=1 has higher rank than ra=3 (rank 0) -> swap path
+	if u.find(3) != u.find(1) {
+		t.Fatalf("3 and 1 should share a root after union")
+	}
+	root13 := u.find(1)
+	if u.rank[root13] < 1 {
+		t.Fatalf("expected root rank >= 1 after two unions, got %d", u.rank[root13])
+	}
+
+	// union(4,5): both rank 0 -> tie-break increments the winning root's rank.
+	u.union(4, 5)
+	root45 := u.find(4)
+	if u.rank[root45] != 1 {
+		t.Fatalf("tie-break union should produce rank 1, got %d", u.rank[root45])
+	}
+
+	// union(root13-side, root45-side): ra has strictly higher rank than rb ->
+	// no swap, no increment (the "ra keeps its rank" branch).
+	u.union(1, 4)
+	if u.find(1) != u.find(4) || u.find(1) != u.find(5) {
+		t.Fatalf("all of 1,3,4,5 should share one root: find(1)=%d find(4)=%d find(5)=%d", u.find(1), u.find(4), u.find(5))
+	}
+}
+
 func TestIndexClamp(t *testing.T) {
 	ix := NewIndex(3)
 	if ix.K() != 3 {

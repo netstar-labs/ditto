@@ -67,6 +67,19 @@ func TestSumLargeWeightsDoNotFlipBit(t *testing.T) {
 	}
 }
 
+func TestSumZeroAndNegativeWeightTreatedAsOne(t *testing.T) {
+	// Feature's doc comment: "Weight; <=0 is treated as 1."
+	base := Sum([]Feature{{Hash: 1, Weight: 1}})
+	zero := Sum([]Feature{{Hash: 1, Weight: 0}})
+	neg := Sum([]Feature{{Hash: 1, Weight: -5}})
+	if zero != base {
+		t.Errorf("Sum with Weight=0 = %s, want same as Weight=1 (%s)", zero, base)
+	}
+	if neg != base {
+		t.Errorf("Sum with Weight=-5 = %s, want same as Weight=1 (%s)", neg, base)
+	}
+}
+
 func TestSatAdd64(t *testing.T) {
 	cases := []struct{ a, b, want int64 }{
 		{0, 0, 0},
