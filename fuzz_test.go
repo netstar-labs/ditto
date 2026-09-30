@@ -1,6 +1,9 @@
 package ditto
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 // FuzzFingerprint checks the normalize→shingle→SimHash path never panics on
 // arbitrary input (attacker-controlled bodies), across char and word shingling
@@ -44,5 +47,27 @@ func FuzzIndex(f *testing.F) {
 			t.Fatalf("a not found at distance 0 in its own index")
 		}
 		_ = ix.Clusters(3, 1)
+	})
+}
+
+// FuzzLoadIndex checks that LoadIndex never panics on arbitrary bytes. It is
+// documented as being for trusted snapshots (persist.go), so a malformed
+// snapshot is only required to error cleanly, never to succeed — but
+// encoding/gob decoding untrusted bytes still crosses a trust boundary and
+// must not crash the process.
+func FuzzLoadIndex(f *testing.F) {
+	var validSnapshot bytes.Buffer
+	ix := NewIndex(3)
+	ix.Add("a", 1)
+	ix.Add("b", 2)
+	if err := ix.Save(&validSnapshot); err != nil {
+		f.Fatal(err)
+	}
+	f.Add(validSnapshot.Bytes())
+	f.Add([]byte("not gob"))
+	f.Add([]byte(""))
+	f.Add([]byte{0x00})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = LoadIndex(bytes.NewReader(data)) // must not panic; error is fine
 	})
 }
