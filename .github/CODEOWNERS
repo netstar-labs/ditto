@@ -1,0 +1,4 @@
+# Review routing. No org team currently has confirmed write access to this
+# repo (see the audit that introduced this file) — routed to the actual owner
+# instead of a placeholder team that could silently fail to resolve a reviewer.
+*                @zxdev
