@@ -23,8 +23,8 @@ type Match struct {
 // near-duplicates are the exception. A corpus dominated by many mutually
 // near-duplicate documents (e.g. a mass-identical spam blast) makes every member
 // share a bucket with every other, so Near/Clusters degrade toward O(n²) for that
-// cluster — inherent to banding, not a bug; see index_test.go's quadratic-blowup
-// benchmark.
+// cluster — inherent to banding, not a bug; see BenchmarkClustersAllDuplicate in
+// bench_test.go.
 //
 // Add fingerprints, then query with Near or group the whole set with Clusters. An
 // Index is not safe for concurrent Add; build it, then read.
@@ -43,12 +43,8 @@ type Index struct {
 // NewIndex creates an index whose Near/Clusters resolve near-duplicates up to a
 // Hamming distance of k (k >= 0).
 func NewIndex(k int) *Index {
-	if k < 0 {
-		k = 0
-	}
-	if k > 63 { // each of the k+1 blocks needs at least 1 bit; 64 blocks is the max
-		k = 63
-	}
+	// each of the k+1 blocks needs at least 1 bit, so 63 is the max
+	k = min(max(k, 0), 63)
 	blocks := k + 1
 	bounds := make([]uint, blocks+1)
 	for i := 0; i <= blocks; i++ {

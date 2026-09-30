@@ -2,7 +2,6 @@ package ditto
 
 import (
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -11,22 +10,7 @@ import (
 // behaviour is part of the fingerprint pipeline — any change to it must bump
 // [PipelineVersion], because it shifts every fingerprint.
 func Normalize(text string) string {
-	text = stripTags(text)
-	var b strings.Builder
-	b.Grow(len(text))
-	inSpace := true // also trims leading space
-	for _, r := range text {
-		if unicode.IsSpace(r) {
-			if !inSpace {
-				b.WriteByte(' ')
-				inSpace = true
-			}
-			continue
-		}
-		b.WriteRune(unicode.ToLower(r))
-		inSpace = false
-	}
-	return strings.TrimRight(b.String(), " ")
+	return strings.Join(strings.Fields(strings.ToLower(stripTags(text))), " ")
 }
 
 // stripTags removes <...> spans, replacing each with a space so adjacent words
