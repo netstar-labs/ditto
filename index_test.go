@@ -1,7 +1,9 @@
 package ditto
 
 import (
+	"bytes"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -129,6 +131,53 @@ func TestUnionFind(t *testing.T) {
 	if u.find(1) != u.find(4) || u.find(1) != u.find(5) {
 		t.Fatalf("all of 1,3,4,5 should share one root: find(1)=%d find(4)=%d find(5)=%d", u.find(1), u.find(4), u.find(5))
 	}
+}
+
+func TestZeroValueIndexAddPanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Add on a zero-value Index should panic, but did not")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "zero-value Index") {
+			t.Fatalf("panic value = %v, want a message naming a zero-value Index", r)
+		}
+	}()
+	var ix Index
+	ix.Add("a", Fingerprint(1))
+}
+
+// LoadIndex and NewIndex(anything, including 0) must never trip the zero-value
+// guard: both always allocate ix.tables.
+func TestConstructedIndexesNeverTripZeroValueGuard(t *testing.T) {
+	for _, k := range []int{0, 1, 63} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("NewIndex(%d).Add panicked: %v", k, r)
+				}
+			}()
+			NewIndex(k).Add("a", Fingerprint(1))
+		}()
+	}
+
+	var buf bytes.Buffer
+	src := NewIndex(3)
+	src.Add("a", Fingerprint(1))
+	if err := src.Save(&buf); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadIndex(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("LoadIndex result's Add panicked: %v", r)
+		}
+	}()
+	loaded.Add("b", Fingerprint(2))
 }
 
 func TestIndexClamp(t *testing.T) {

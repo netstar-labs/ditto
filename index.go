@@ -39,8 +39,8 @@ type Match struct {
 // the other.
 //
 // The zero value is not usable: always construct via [NewIndex] or [LoadIndex].
-// A zero-value Index accepts Add calls (Len grows) but never indexes anything
-// into a band table, so Near and Clusters silently report no matches for it.
+// [Index.Add] panics on a zero-value Index rather than silently accepting
+// entries that would never reach a band table.
 type Index struct {
 	k      int
 	bounds []uint             // block bit boundaries, len k+2
@@ -78,8 +78,12 @@ func (ix *Index) block(fp Fingerprint, i int) uint64 {
 }
 
 // Add inserts a fingerprint under an id. Ids need not be unique, but duplicates
-// are reported separately.
+// are reported separately. Add panics if ix is a zero-value Index (not built
+// via [NewIndex] or [LoadIndex]) — see the Index doc comment.
 func (ix *Index) Add(id string, fp Fingerprint) {
+	if ix.tables == nil {
+		panic("ditto: Index.Add called on a zero-value Index; construct with NewIndex or LoadIndex")
+	}
 	idx := len(ix.ids)
 	ix.ids = append(ix.ids, id)
 	ix.fps = append(ix.fps, fp)
