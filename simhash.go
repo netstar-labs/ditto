@@ -2,6 +2,7 @@ package ditto
 
 import (
 	"fmt"
+	"math"
 	"math/bits"
 )
 
@@ -22,8 +23,15 @@ type Feature struct {
 // -weight when it does not; the result bit is 1 wherever the accumulator ends
 // positive. Sum is order-independent — the accumulation commutes — so the
 // fingerprint depends only on the multiset of features, not their order.
+//
+// The accumulator saturates at int64's bounds rather than wrapping: Weight is
+// caller-supplied with no upper bound, so without saturation a large Weight (or
+// many features voting the same bit) could overflow int64 and silently flip a
+// bit to the wrong value. Only the accumulator's sign determines the output
+// bit, and saturation always preserves the correct sign, so this cannot
+// overflow regardless of the weight total.
 func Sum(features []Feature) Fingerprint {
-	var col [64]int64 // 64-bit so accumulation is platform-independent and cannot overflow on any realistic weight total
+	var col [64]int64
 	for _, f := range features {
 		w := int64(f.Weight)
 		if w <= 0 {
@@ -32,9 +40,9 @@ func Sum(features []Feature) Fingerprint {
 		h := f.Hash
 		for i := 0; i < 64; i++ {
 			if h&(uint64(1)<<i) != 0 {
-				col[i] += w
+				col[i] = satAdd64(col[i], w)
 			} else {
-				col[i] -= w
+				col[i] = satAdd64(col[i], -w)
 			}
 		}
 	}
@@ -45,6 +53,22 @@ func Sum(features []Feature) Fingerprint {
 		}
 	}
 	return Fingerprint(fp)
+}
+
+// satAdd64 adds a and b, clamping to math.MinInt64/math.MaxInt64 on overflow
+// instead of wrapping. Sum only needs the accumulator's sign, so clamping is
+// sufficient — a wider accumulator would just move the same failure further
+// out rather than removing it.
+func satAdd64(a, b int64) int64 {
+	s := a + b
+	switch {
+	case a > 0 && b > 0 && s < 0:
+		return math.MaxInt64
+	case a < 0 && b < 0 && s >= 0: // both MinInt64 wraps the sum to exactly 0
+		return math.MinInt64
+	default:
+		return s
+	}
 }
 
 // Distance is the Hamming distance between two fingerprints (0 = identical).

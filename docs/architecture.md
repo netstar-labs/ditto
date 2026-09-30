@@ -37,14 +37,19 @@ similarity.
 
 ## Near-duplicate lookup (`index.go`)
 
-Comparing all pairs is O(n²). The **Index** uses banded lookup (the
-permutation-table method from the Google near-duplicate crawl paper): built for a
-maximum Hamming distance `k`, it splits each 64-bit fingerprint into `k+1`
-contiguous blocks. By the pigeonhole principle, two fingerprints within `k` bits
-must agree exactly on at least one block, so each fingerprint is indexed under each
-of its block values, and a query only compares candidates that collide on a block
-— then verifies the true Hamming distance. `Clusters` runs this over the whole set
-and unions near pairs with a disjoint-set forest to yield near-duplicate families.
+Comparing all pairs is O(n²). The **Index** uses banded lookup — a block-partition
+bucketing scheme, per the pigeonhole guarantee used in the Google near-duplicate
+crawl paper (no bit permutation is performed): built for a maximum Hamming distance
+`k`, it splits each 64-bit fingerprint into `k+1` contiguous blocks. By the
+pigeonhole principle, two fingerprints within `k` bits must agree exactly on at
+least one block, so each fingerprint is indexed under each of its block values, and
+a query only compares candidates that collide on a block — then verifies the true
+Hamming distance. `Clusters` runs this over the whole set and unions near pairs
+with a disjoint-set forest to yield near-duplicate families.
+
+The sub-quadratic guarantee assumes band buckets stay small — it degrades toward
+O(n²) for a corpus dominated by mutually near-duplicate documents (every member
+then shares a bucket with every other), which is inherent to banding, not a defect.
 
 Trade-off: the index holds one map entry per block per fingerprint (`k+1` per doc);
 memory grows linearly with `k`. For `k=3` that is four 16-bit-keyed tables — the

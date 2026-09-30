@@ -2,17 +2,13 @@ package ditto
 
 import (
 	"bytes"
+	"encoding/gob"
 	"testing"
 )
 
 func TestIndexSaveLoad(t *testing.T) {
 	f := Default()
-	docs := []struct{ id, text string }{
-		{"p1", "Your Apple ID has been locked. Please verify your account now."},
-		{"p2", "Your Apple ID has been locked. Please verify your account now!"},
-		{"b1", "Weekly newsletter with this week's stories from around the web."},
-		{"b2", "Weekly newsletter with this week's stories from around the web."},
-	}
+	docs := sampleDocs // defined in index_test.go
 	ix := NewIndex(6)
 	for _, d := range docs {
 		ix.Add(d.id, f.Of(d.text))
@@ -68,5 +64,28 @@ func TestLoadIndexHighFingerprint(t *testing.T) {
 func TestLoadIndexCorrupt(t *testing.T) {
 	if _, err := LoadIndex(bytes.NewReader([]byte("not gob"))); err == nil {
 		t.Error("LoadIndex should error on corrupt input")
+	}
+}
+
+func TestLoadIndexMismatchedLengths(t *testing.T) {
+	var buf bytes.Buffer
+	// A well-formed gob stream, but with more ids than fingerprints — not
+	// producible via Index.Save (ix.ids and ix.fps always grow together in
+	// Add), so this is exercised directly against the snapshot wire type.
+	err := gob.NewEncoder(&buf).Encode(snapshot{
+		K:   3,
+		IDs: []string{"a", "b"},
+		FPs: []Fingerprint{1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = LoadIndex(&buf)
+	if err == nil {
+		t.Fatal("LoadIndex should error on mismatched ids/fingerprints lengths")
+	}
+	const want = "ditto: corrupt index snapshot: 2 ids, 1 fingerprints"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
 	}
 }

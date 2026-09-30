@@ -12,14 +12,35 @@ type Match struct {
 	Distance    int
 }
 
-// Index finds near-duplicates in better-than-O(n²) time with banded lookup (the
-// permutation-table trick from the Google near-dup crawl paper). Built for a
+// Index finds near-duplicates in better-than-O(n²) time with banded lookup: a
+// block-partition bucketing scheme, per the pigeonhole guarantee used in the
+// Google near-dup crawl paper (no bit permutation is performed). Built for a
 // maximum Hamming distance k, it splits each 64-bit fingerprint into k+1 blocks;
 // by the pigeonhole principle any two fingerprints within k bits share at least
 // one identical block, so only fingerprints colliding on a block are compared.
 //
+// The sub-quadratic guarantee assumes band buckets stay small, which holds when
+// near-duplicates are the exception. A corpus dominated by many mutually
+// near-duplicate documents (e.g. a mass-identical spam blast) makes every member
+// share a bucket with every other, so Near/Clusters degrade toward O(n²) for that
+// cluster — inherent to banding, not a bug; see BenchmarkClustersAllDuplicate in
+// bench_test.go.
+//
 // Add fingerprints, then query with Near or group the whole set with Clusters. An
-// Index is not safe for concurrent Add; build it, then read.
+// Index is not safe for concurrent Add; build it, then read. Violating that
+// contract is undefined behavior, but note its character changed: candidates
+// (used by Near) once deduped through a map, whose out-of-range key access
+// never panics, so a concurrent Add raced with a read surfaced only as Go's
+// own unrecoverable "concurrent map read and map write" fatal error — never a
+// recoverable panic. It now dedupes through a slice sized from a snapshot of
+// Len, so the same misuse can also surface as an ordinary (recoverable) index-
+// out-of-range panic. Both signal the same contract violation; a caller using
+// recover() to contain misuse should not treat either as a softer signal than
+// the other.
+//
+// The zero value is not usable: always construct via [NewIndex] or [LoadIndex].
+// [Index.Add] panics on a zero-value Index rather than silently accepting
+// entries that would never reach a band table.
 type Index struct {
 	k      int
 	bounds []uint             // block bit boundaries, len k+2
@@ -31,12 +52,8 @@ type Index struct {
 // NewIndex creates an index whose Near/Clusters resolve near-duplicates up to a
 // Hamming distance of k (k >= 0).
 func NewIndex(k int) *Index {
-	if k < 0 {
-		k = 0
-	}
-	if k > 63 { // 64-bit fingerprint: more than 63 differing bits is meaningless
-		k = 63
-	}
+	// each of the k+1 blocks needs at least 1 bit, so 63 is the max
+	k = min(max(k, 0), 63)
 	blocks := k + 1
 	bounds := make([]uint, blocks+1)
 	for i := 0; i <= blocks; i++ {
@@ -61,8 +78,12 @@ func (ix *Index) block(fp Fingerprint, i int) uint64 {
 }
 
 // Add inserts a fingerprint under an id. Ids need not be unique, but duplicates
-// are reported separately.
+// are reported separately. Add panics if ix is a zero-value Index (not built
+// via [NewIndex] or [LoadIndex]) — see the Index doc comment.
 func (ix *Index) Add(id string, fp Fingerprint) {
+	if ix.tables == nil {
+		panic("ditto: Index.Add called on a zero-value Index; construct with NewIndex or LoadIndex")
+	}
 	idx := len(ix.ids)
 	ix.ids = append(ix.ids, id)
 	ix.fps = append(ix.fps, fp)
@@ -74,12 +95,12 @@ func (ix *Index) Add(id string, fp Fingerprint) {
 
 // candidates returns the deduped entry indices sharing at least one block with fp.
 func (ix *Index) candidates(fp Fingerprint) []int {
-	seen := make(map[int]struct{})
+	visited := make([]bool, len(ix.fps)) // call-local: as safe for concurrent Near as the map it replaces
 	var out []int
 	for i := range ix.tables {
 		for _, idx := range ix.tables[i][ix.block(fp, i)] {
-			if _, ok := seen[idx]; !ok {
-				seen[idx] = struct{}{}
+			if !visited[idx] {
+				visited[idx] = true
 				out = append(out, idx)
 			}
 		}
@@ -87,12 +108,18 @@ func (ix *Index) candidates(fp Fingerprint) []int {
 	return out
 }
 
+// clampK caps a queried k to the index's build-time K.
+func (ix *Index) clampK(k int) int {
+	if k > ix.k {
+		return ix.k
+	}
+	return k
+}
+
 // Near returns every indexed entry within k bits of fp, nearest first. k is
 // clamped to the index's build-time K.
 func (ix *Index) Near(fp Fingerprint, k int) []Match {
-	if k > ix.k {
-		k = ix.k
-	}
+	k = ix.clampK(k)
 	var out []Match
 	for _, idx := range ix.candidates(fp) {
 		if d := Distance(fp, ix.fps[idx]); d <= k {
@@ -111,9 +138,7 @@ func (ix *Index) Near(fp Fingerprint, k int) []Match {
 // within each cluster, clusters by descending size then first id. k is clamped to
 // the index's build-time K.
 func (ix *Index) Clusters(k, min int) [][]string {
-	if k > ix.k {
-		k = ix.k
-	}
+	k = ix.clampK(k)
 	n := len(ix.ids)
 	u := newUnionFind(n)
 	// One reusable generation-stamped visited slice for the whole call: visited[j]

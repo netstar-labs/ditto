@@ -10,9 +10,10 @@
 //
 //   - ditto_cluster is STATELESS: everything it needs arrives in the call, so it
 //     is useful the moment the server starts.
-//   - ditto_near is STATEFUL: it answers against an Index, and an EMPTY index
-//     matches nothing. See the note on nearIndex below for what it needs to be
-//     useful.
+//   - ditto_near is STATEFUL: it answers against an Index. Below it is seeded
+//     with two hardcoded example documents purely so it demonstrates a real
+//     hit out of the box — see the note on nearIndex for how a real deployment
+//     replaces that with its own corpus.
 package main
 
 import (
@@ -58,13 +59,7 @@ func main() {
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return mcp.ToolError("invalid arguments: %v", err), nil
 		}
-		k, min := 3, 2
-		if in.K != nil {
-			k = *in.K
-		}
-		if in.Min != nil {
-			min = *in.Min
-		}
+		k, min := intOr(in.K, 3), intOr(in.Min, 2)
 		f := ditto.Default()
 		ix := ditto.NewIndex(k)
 		for _, d := range in.Docs {
@@ -79,24 +74,23 @@ func main() {
 
 	// Tool 2 — stateful near-duplicate lookup.
 	//
-	// WHAT THIS NEEDS TO BE USEFUL: a POPULATED nearIndex. As written the index is
-	// empty, so the tool truthfully reports "no near-duplicates" for every query —
-	// a stateless fingerprint has nothing to compare against. The value of near-dup
-	// lookup lives entirely in the corpus behind it. In production that corpus is
-	// owned and kept warm elsewhere and injected here:
+	// WHAT THIS NEEDS TO BE USEFUL: a POPULATED nearIndex. Below it is seeded with
+	// two example documents purely so a query actually returns a hit and this
+	// tool demonstrates something real out of the box. In production that corpus
+	// is owned and kept warm elsewhere and injected the same way:
 	//
 	//   - a service that aggregates fingerprints across your corpus into one
 	//     shared Index, or
 	//   - a snapshot is restored at startup with ditto.LoadIndex(f).
-	//
-	// Until then ditto_near is a wired-but-inert stub; ditto_cluster above is the
-	// self-contained tool.
-	nearIndex := ditto.NewIndex(3) // TODO: populate from your corpus / ditto.LoadIndex
+	nearIndex := ditto.NewIndex(3)
+	seedF := ditto.Default()
+	nearIndex.Add("example-phishing-1", seedF.Of("Your Apple ID has been locked. Please verify your account at the link below."))
+	nearIndex.Add("example-newsletter-1", seedF.Of("Weekly newsletter: this week's top stories from around the web, curated for you."))
 	must(srv.AddTool(mcp.Tool{
 		Name: "ditto_near",
-		Description: "Find near-duplicates of a document within a prewarmed corpus. Input: text, " +
-			"optional k (max Hamming distance, default 3). Returns matches (id, distance), nearest first. " +
-			"Only useful when the server's corpus index is populated.",
+		Description: "Find near-duplicates of a document within this server's corpus (in this example, " +
+			"two hardcoded sample documents — a real deployment replaces them with its own). Input: text, " +
+			"optional k (max Hamming distance, default 3). Returns matches (id, distance), nearest first.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"k":{"type":"integer","minimum":0}},"required":["text"]}`),
 	}, func(ctx context.Context, s *mcp.Session, raw json.RawMessage) (*mcp.CallToolResult, error) {
 		var in struct {
@@ -106,13 +100,9 @@ func main() {
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return mcp.ToolError("invalid arguments: %v", err), nil
 		}
-		k := 3
-		if in.K != nil {
-			k = *in.K
-		}
-		matches := nearIndex.Near(ditto.Default().Of(in.Text), k)
+		matches := nearIndex.Near(ditto.Default().Of(in.Text), intOr(in.K, 3))
 		if len(matches) == 0 {
-			return mcp.ToolText("no near-duplicates (the corpus index may be empty — see the example source)"), nil
+			return mcp.ToolText("no near-duplicates in the (small, example-seeded) corpus"), nil
 		}
 		var b strings.Builder
 		for _, m := range matches {
@@ -132,4 +122,13 @@ func must(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+// intOr returns *p if p is non-nil, else def — for an optional JSON int field
+// with a default.
+func intOr(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
 }

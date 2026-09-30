@@ -23,7 +23,7 @@ func (ix *Index) Save(w io.Writer) error {
 }
 
 // LoadIndex reads an index written by [Index.Save], rebuilding the banded tables.
-// The reconstructed index is byte-for-byte equivalent to the original (same k,
+// The reconstructed index is functionally equivalent to the original (same k,
 // same entries, same Near/Clusters results).
 // maxSnapshotBytes bounds how much LoadIndex reads from r, so a hostile or corrupt
 // gob stream cannot drive unbounded allocation. 1 GiB is far beyond any realistic

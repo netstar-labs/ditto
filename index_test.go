@@ -1,18 +1,26 @@
 package ditto
 
 import (
+	"bytes"
 	"slices"
+	"strings"
 	"testing"
 )
 
+// sampleDocs is shared with persist_test.go: two near-duplicate phishing
+// variants (p1/p2) and one exact duplicate pair (b1/b2), used to exercise both
+// Near and Clusters (and, in persist_test.go, that a save/load round-trip
+// preserves their results).
+var sampleDocs = []struct{ id, text string }{
+	{"p1", "Your Apple ID has been locked. Please verify your account now."},
+	{"p2", "Your Apple ID has been locked. Please verify your account now!"}, // near p1
+	{"b1", "Weekly newsletter with this week's stories from around the web."},
+	{"b2", "Weekly newsletter with this week's stories from around the web."}, // exact dup of b1
+}
+
 func TestIndexNearAndClusters(t *testing.T) {
 	f := Default()
-	docs := []struct{ id, text string }{
-		{"p1", "Your Apple ID has been locked. Please verify your account now."},
-		{"p2", "Your Apple ID has been locked. Please verify your account now!"}, // near p1
-		{"b1", "Weekly newsletter with this week's stories from around the web."},
-		{"b2", "Weekly newsletter with this week's stories from around the web."}, // exact dup of b1
-	}
+	docs := sampleDocs
 	ix := NewIndex(6)
 	for _, d := range docs {
 		ix.Add(d.id, f.Of(d.text))
@@ -84,6 +92,92 @@ func TestIndexExactDupAtK0(t *testing.T) {
 	if len(cl) != 1 || len(cl[0]) != 2 {
 		t.Fatalf("want one 2-member exact-dup cluster, got %v", cl)
 	}
+}
+
+// TestUnionFind exercises every branch of union directly: already-same-root
+// (no-op), rank[a]<rank[b] (swap so the higher-rank root wins), rank[a]>rank[b]
+// (no swap), and the tie-break that increments rank.
+func TestUnionFind(t *testing.T) {
+	u := newUnionFind(6)
+
+	// Already the same root: no-op.
+	u.union(0, 0)
+	if u.find(0) != 0 {
+		t.Fatalf("self-union changed root: %d", u.find(0))
+	}
+
+	// Build a rank-2 tree at root 1: union(1,2) then union(1,3) via ties, so
+	// rank[1] becomes 2 while 4/5 start at rank 0.
+	u.union(1, 2) // tie (both rank 0) -> root becomes rank 1
+	u.union(3, 1) // rb=1 has higher rank than ra=3 (rank 0) -> swap path
+	if u.find(3) != u.find(1) {
+		t.Fatalf("3 and 1 should share a root after union")
+	}
+	root13 := u.find(1)
+	if u.rank[root13] < 1 {
+		t.Fatalf("expected root rank >= 1 after two unions, got %d", u.rank[root13])
+	}
+
+	// union(4,5): both rank 0 -> tie-break increments the winning root's rank.
+	u.union(4, 5)
+	root45 := u.find(4)
+	if u.rank[root45] != 1 {
+		t.Fatalf("tie-break union should produce rank 1, got %d", u.rank[root45])
+	}
+
+	// union(root13-side, root45-side): ra has strictly higher rank than rb ->
+	// no swap, no increment (the "ra keeps its rank" branch).
+	u.union(1, 4)
+	if u.find(1) != u.find(4) || u.find(1) != u.find(5) {
+		t.Fatalf("all of 1,3,4,5 should share one root: find(1)=%d find(4)=%d find(5)=%d", u.find(1), u.find(4), u.find(5))
+	}
+}
+
+func TestZeroValueIndexAddPanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Add on a zero-value Index should panic, but did not")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "zero-value Index") {
+			t.Fatalf("panic value = %v, want a message naming a zero-value Index", r)
+		}
+	}()
+	var ix Index
+	ix.Add("a", Fingerprint(1))
+}
+
+// LoadIndex and NewIndex(anything, including 0) must never trip the zero-value
+// guard: both always allocate ix.tables.
+func TestConstructedIndexesNeverTripZeroValueGuard(t *testing.T) {
+	for _, k := range []int{0, 1, 63} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("NewIndex(%d).Add panicked: %v", k, r)
+				}
+			}()
+			NewIndex(k).Add("a", Fingerprint(1))
+		}()
+	}
+
+	var buf bytes.Buffer
+	src := NewIndex(3)
+	src.Add("a", Fingerprint(1))
+	if err := src.Save(&buf); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadIndex(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("LoadIndex result's Add panicked: %v", r)
+		}
+	}()
+	loaded.Add("b", Fingerprint(2))
 }
 
 func TestIndexClamp(t *testing.T) {
