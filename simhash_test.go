@@ -1,6 +1,7 @@
 package ditto
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -39,6 +40,48 @@ func TestSumOrderIndependent(t *testing.T) {
 	rev := []Feature{{Hash: 3, Weight: 1}, {Hash: 2, Weight: 2}, {Hash: 1, Weight: 1}}
 	if Sum(feats) != Sum(rev) {
 		t.Error("Sum must be order-independent")
+	}
+}
+
+// Reproduces the accumulator overflow an adversarial skeptic confirmed before
+// satAdd64 existed: two features voting the same bit with Weight: math.MaxInt
+// wrapped int64's accumulator through two's complement and flipped bit 0 to 0
+// despite two unanimous positive votes.
+func TestSumLargeWeightsDoNotFlipBit(t *testing.T) {
+	feats := []Feature{
+		{Hash: 1, Weight: math.MaxInt},
+		{Hash: 1, Weight: math.MaxInt},
+	}
+	fp := Sum(feats)
+	if fp&1 == 0 {
+		t.Errorf("Sum(%v) bit0 = 0, want 1 (two positive votes must not flip the sign)", feats)
+	}
+
+	negFeats := []Feature{
+		{Hash: 0, Weight: math.MaxInt}, // bit 0 unset: votes -weight
+		{Hash: 0, Weight: math.MaxInt},
+	}
+	fp = Sum(negFeats)
+	if fp&1 != 0 {
+		t.Errorf("Sum(%v) bit0 = 1, want 0 (two negative votes must not flip the sign)", negFeats)
+	}
+}
+
+func TestSatAdd64(t *testing.T) {
+	cases := []struct{ a, b, want int64 }{
+		{0, 0, 0},
+		{5, 3, 8},
+		{-5, -3, -8},
+		{math.MaxInt64, 1, math.MaxInt64},
+		{math.MaxInt64, math.MaxInt64, math.MaxInt64},
+		{math.MinInt64, -1, math.MinInt64},
+		{math.MinInt64, math.MinInt64, math.MinInt64},
+		{math.MaxInt64, math.MinInt64, -1}, // opposite signs never overflow
+	}
+	for _, c := range cases {
+		if got := satAdd64(c.a, c.b); got != c.want {
+			t.Errorf("satAdd64(%d, %d) = %d, want %d", c.a, c.b, got, c.want)
+		}
 	}
 }
 
