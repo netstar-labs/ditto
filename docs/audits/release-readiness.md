@@ -1,37 +1,45 @@
-# ditto — L4 pre-flight (2026-09-29)
+# ditto — L4 pre-flight (2026-09-29, re-verified after two follow-up fixes)
 
 Pre-flight gate per house `L4-release-packaging` §0, run on `audit/a1-l1-l2-hardening`
 (branched from `main`@`ff992e9`, the `v0.1.0` release commit — this is the only commit in the
-repo's history). **Not yet pushed or opened as a PR** — see "What's left" below.
+repo's history). **Not yet pushed or opened as a PR** — see "What's left" below. Re-run after
+two follow-up commits resolved the pass's remaining deferred items (zero-value `Index` guard,
+`gather`'s untested I/O-failure branches — see `defects-log.md`); nothing below changed as a
+result except the release notes gaining one more line.
 
 ## §0 pre-flight gate — all green
 
 - `go build ./...`, `go vet ./...`, `staticcheck ./...`, `deadcode -test ./...`, `gofmt -l .`
-  — clean, all four commits' worth of changes.
+  — clean, all fourteen commits' worth of changes.
 - `go test -race ./... -count=1` — green (core + `app/ditto`).
 - Golden/round-trip suite: `TestIndexSaveLoad`, `TestLoadIndexHighFingerprint` — green.
 - Fuzz smoke: `FuzzFingerprint`, `FuzzIndex`, `FuzzLoadIndex` — 60s each, ~7-14M execs, clean.
-- `go mod tidy` — no diff. `govulncheck ./...` — no vulnerabilities found. Zero third-party
-  dependencies (`go list -deps ./...` is stdlib-only; confirmed above and in
-  `audit-findings.md`'s doc-drift check).
+- `go mod tidy` — no diff (re-checked after the follow-up commits). `govulncheck ./...` — no
+  vulnerabilities found (re-checked). Zero third-party dependencies (`go list -deps ./...` is
+  stdlib-only; confirmed above and in `audit-findings.md`'s doc-drift check).
 - Tree is clean on this branch; branched from current `main` tip (single-commit history, so
   trivially "synced").
 - Re-audit: this whole branch **is** the A1 pass (`audit-findings.md`) plus L1
-  (`verification-optimization.md`) plus L2 (`test-ledger.md` et al.) — there is no separate
-  "diff since assess" to re-run; the assess pass and the fix pass are the same four commits'
-  history, already re-validated after each one.
+  (`verification-optimization.md`) plus L2 (`test-ledger.md` et al.) plus two follow-up fixes
+  from a final independent skeptic pass — there is no separate "diff since assess" to re-run;
+  the assess pass and the fix pass are the same commit history, already re-validated after
+  each one.
 
 ## §1 version & tag — recommendation: `v0.1.1` (patch)
 
 **Exported API surface diff against `v0.1.0`** (every `func`/`type`/`const`/`var` at column 0
-in each core file, `git show v0.1.0:<file>` vs current): the **only** additions are
-`satAdd64`, `clampK`, `fnvStep` — all lowercase, unexported. Nothing exported was added,
-removed, or changed signature. **Zero breaking change**, confirmed by diff, not assumed.
+in each core file, `git show v0.1.0:<file>` vs current, re-run after the follow-up commits):
+the **only** additions in the core `ditto` package are `satAdd64`, `clampK`, `fnvStep` — all
+lowercase, unexported. The follow-up commits added `Index.Add`'s new panic condition (no
+signature change) and changed unexported `app/ditto` internals (`gather`'s new `io.Reader`
+parameter, `package main` — not importable, has no exported surface to consumers). Nothing
+exported was added, removed, or changed signature anywhere. **Zero breaking change**,
+confirmed by diff, not assumed.
 
 Per the house v0 policy (patch for fixes; minor for everything else including breaking
-changes; never `v1`): this pass is three bug fixes (defects-log.md) plus doc corrections,
-simplifications, and dedup with no behavior or API change, plus test/coverage additions —
-squarely a **patch**: `v0.1.1`.
+changes; never `v1`): this pass is four bug fixes (defects-log.md — the three original plus
+the zero-value `Index` panic guard) plus doc corrections, simplifications, and dedup with no
+behavior or API change, plus test/coverage additions — squarely a **patch**: `v0.1.1`.
 
 ## §2 release notes (drafted, not published)
 
@@ -47,6 +55,9 @@ squarely a **patch**: `v0.1.1`.
 - A symlink to a directory, anywhere in a walked tree or as the top-level argument, no
   longer aborts the entire fingerprint/cluster batch — it's skipped; a symlink to a
   regular file is still followed as before.
+- Index.Add now panics with a clear message if called on a zero-value Index (one not
+  constructed via NewIndex/LoadIndex), instead of silently accepting entries that could
+  never be found by Near/Clusters.
 
 ### Additions
 - Documentation corrections: the near-dup lookup's actual mechanism (block-partition
