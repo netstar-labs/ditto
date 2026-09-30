@@ -67,7 +67,7 @@ func fingerprint(args []string) error {
 	fs.Parse(args)
 	f := featurizer()
 
-	docs, err := gather(fs.Args())
+	docs, err := gather(fs.Args(), os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func cluster(args []string) error {
 	fs.Parse(args)
 	f := featurizer()
 
-	docs, err := gather(fs.Args())
+	docs, err := gather(fs.Args(), os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -128,9 +128,9 @@ type doc struct {
 
 // gather reads each path as one document; directories are walked (files only).
 // With no paths it reads a single document from stdin.
-func gather(paths []string) ([]doc, error) {
+func gather(paths []string, stdin io.Reader) ([]doc, error) {
 	if len(paths) == 0 {
-		b, err := io.ReadAll(os.Stdin)
+		b, err := io.ReadAll(stdin)
 		if err != nil {
 			return nil, err
 		}

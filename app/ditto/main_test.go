@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/netstar-labs/ditto"
@@ -60,7 +62,7 @@ func TestGatherSkipsSymlinkedDirectoryWithoutAbortingWalk(t *testing.T) {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
 
-	docs, err := gather([]string{root})
+	docs, err := gather([]string{root}, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("gather returned error, the symlink should have been skipped: %v", err)
 	}
@@ -78,7 +80,7 @@ func TestGatherFollowsSymlinkToRegularFile(t *testing.T) {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
 
-	docs, err := gather([]string{root})
+	docs, err := gather([]string{root}, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
@@ -100,7 +102,7 @@ func TestGatherSkipsTopLevelSymlinkToDirectory(t *testing.T) {
 		t.Skipf("symlinks unsupported: %v", err)
 	}
 
-	docs, err := gather([]string{link})
+	docs, err := gather([]string{link}, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("gather returned error for a top-level symlink-to-dir, want a clean skip: %v", err)
 	}
@@ -113,5 +115,66 @@ func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// errReader always fails, simulating a broken stdin pipe.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestGatherSurfacesStdinReadFailure(t *testing.T) {
+	wantErr := errors.New("broken pipe")
+	_, err := gather(nil, errReader{wantErr})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("gather error = %v, want %v", err, wantErr)
+	}
+}
+
+// skipIfCannotDenyOwnRead skips a permission-denied test in the two
+// environments where chmod 0o000 doesn't actually block this process's own
+// read: running as root (root bypasses file permission bits entirely on
+// Unix) and Windows (where Unix permission bits don't apply the same way).
+// Guarding on both avoids a flaky pass that silently stops testing anything.
+func skipIfCannotDenyOwnRead(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission denial is unix-specific")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: file permission bits don't block root's own read")
+	}
+}
+
+func TestGatherTopLevelFilePermissionDenied(t *testing.T) {
+	skipIfCannotDenyOwnRead(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secret.txt")
+	mustWrite(t, file, "cannot read this")
+	if err := os.Chmod(file, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(file, 0o644) // let TempDir clean up
+
+	_, err := gather([]string{file}, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("gather should surface a permission-denied error, got nil")
+	}
+}
+
+func TestGatherNestedFilePermissionDenied(t *testing.T) {
+	skipIfCannotDenyOwnRead(t)
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a_readable.txt"), "fine")
+	secret := filepath.Join(dir, "z_secret.txt")
+	mustWrite(t, secret, "cannot read this")
+	if err := os.Chmod(secret, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(secret, 0o644)
+
+	_, err := gather([]string{dir}, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("gather should surface a permission-denied error from inside the walk, got nil")
 	}
 }

@@ -20,7 +20,7 @@ the auditor's reasoning, before being trusted.
 |---|---|---|---|
 | 1 | `app/ditto`: `fingerprint`/`cluster` discarded every `Fprintf` error and `Flush`'s error via a bare `defer w.Flush()` — a write failure on stdout (disk full/quota) produced silently truncated output, exit code 0. Reproduced with `ulimit -f`: 2000-line expected output truncated to 7 lines, no stderr, exit 0. | **CONFIRMED** | Fixed — `bufio.Writer` latches its first error and returns it from every later call including `Flush`, so returning `w.Flush()` directly is sufficient. Extracted `writeFingerprints`/`writeClusters` (io.Writer-parameterized) so this is actually testable. Regression tests in `app/ditto/main_test.go`. |
 | 2 | `simhash.go` `Sum`: `[64]int64` accumulator overflows and wraps (two's complement) when two `Feature`s share a hash bit and each carry `Weight: math.MaxInt`, flipping the output bit — contradicting the doc comment's "cannot overflow on any realistic weight total". Reproduced directly. Not reachable through the shipped `Featurizer` (shingle counts never approach `MaxInt`), but `Feature`/`Sum` are general-purpose public API. | **CONFIRMED** | Fixed — `satAdd64` saturates at `int64`'s bounds instead of wrapping; only the accumulator's sign is ever read, so saturation cannot produce a wrong sign. `TestSumLargeWeightsDoNotFlipBit` + `TestSatAdd64` (which itself caught a real edge case: `MinInt64 + MinInt64` wraps to exactly 0, not a positive number). |
-| 3 | `index.go`: the zero-value `Index` (`var ix ditto.Index`, not `NewIndex`) accepts `Add` calls (`Len()` grows) but never indexes anything into a band table (`tables == nil`, loop is a no-op) — `Near` then reports zero matches forever, and `Clusters` at `min<=1` returns spurious all-singleton output rather than an obvious error. Reproduced directly. Grepped every call site in the repo: none constructs a zero-value `Index` today. | **CONFIRMED**, currently unreached | Doc-only fix applied (cheapest, no behavior change): `Index`'s comment now states the zero value is not usable. **Deferred decision, flagged for you:** a louder guard (panic on `Add` when `tables == nil`, or a lazy default `k=0`) is a real option if this library grows external callers who might zero-value it (e.g. via a containing struct) — not applied here since it's an API-behavior choice, not a bug fix. |
+| 3 | `index.go`: the zero-value `Index` (`var ix ditto.Index`, not `NewIndex`) accepts `Add` calls (`Len()` grows) but never indexes anything into a band table (`tables == nil`, loop is a no-op) — `Near` then reports zero matches forever, and `Clusters` at `min<=1` returns spurious all-singleton output rather than an obvious error. Reproduced directly. Grepped every call site in the repo: none constructs a zero-value `Index` today. | **CONFIRMED**, currently unreached | **Fixed** (initially deferred as a doc-only warning, resolved in a follow-up pass): `Add` now panics with a clear message when called on a zero-value `Index`, per "enforce invariants at construction, let impossible states fail loudly." `NewIndex`/`LoadIndex` results never trip the guard (verified). |
 | 4 | `index.go`: the "better-than-O(n²)" doc claim is false for ditto's own headline use case — a corpus of mass-identical/near-identical documents (a spam blast) makes every entry share every band bucket, so `Near`/`Clusters` degrade to true O(n²). Measured: ~4x time per doubling at n=2000→16000 (textbook quadratic; sub-quadratic would be ~2x). | **CONFIRMED** | Doc fix — `index.go` and `docs/architecture.md` now state the sub-quadratic guarantee depends on band buckets staying small and degrades for a mass-duplicate corpus. `BenchmarkClustersAllDuplicate` added to keep the regression visible. This is inherent to banding, not a bug; no code change. |
 | 5 | `app/ditto` `gather()`: a symlink to a directory, nested anywhere in a walked tree **or as the top-level argument itself**, reached `os.ReadFile` and failed with "is a directory" — and that error aborted the **entire** `WalkDir`, discarding every doc already gathered, for one link anywhere in the tree. | **CONFIRMED** | Fixed — a symlink to a regular file is still read (unchanged, already worked); a symlink to a directory, or a broken one, is skipped instead of treated as fatal. Regression tests cover nested and top-level cases, plus a control proving symlink-to-file is unaffected. |
 
@@ -105,12 +105,14 @@ Two real, previously-unflagged issues surfaced and were fixed:
   "only useful when populated" after the same commit made it always non-empty. Reworded both
   to describe what the code now actually does.
 
-## Followups deferred to later passes
+## Followups — all since resolved
 
-- **Zero-value `Index` guard** (dimension C #3 above) — a decision for you, not applied.
+- **Zero-value `Index` guard** (dimension C #3 above) — resolved; see `defects-log.md`.
+- **`gather`'s permission-denied and stdin-read-failure branches** — flagged during L2 as
+  needing a production seam, then resolved the same day; see `untestable-without-x.md`.
 - **`featurize.go` had zero test coverage before this pass** — closed with a baseline
-  `featurize_test.go`, but exhaustive edge-case/fuzz coverage for `shingleChars`/
-  `shingleWords` belongs to the L2 pass (coverage ledger).
+  `featurize_test.go`; exhaustive edge-case/fuzz coverage lives in the L2 pass (coverage
+  ledger).
 - L1/L2 (verification, optimization, exhaustive test/fuzz/bench/harden suite) follow this
   pass per the house lifecycle; see `docs/audits/verification-optimization.md` and
-  `docs/audits/test-ledger.md`.
+  `docs/audits/test-ledger.md`. There are no remaining open deferrals from this audit.

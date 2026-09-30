@@ -43,7 +43,7 @@ coverage (`cli_test.go` + `GOCOVERDIR`, `go tool covdata`): the complementary vi
 | `cluster` | 0% | **100%** | covered |
 | `writeFingerprints` | **100%** | 100% | covered (both styles — flush-error test is in-process, happy path in both) |
 | `writeClusters` | 57.1% | **100%** | covered (in-process only hit the error path; subprocess exercises the real multi-cluster print loop) |
-| `gather` | 61.3% | 77.4% | **not fully unioned** — see `untestable-without-x.md` for the exact remaining gap (permission-denied and stdin-read-failure paths) |
+| `gather` | 87.1% | 77.4% | **covered** — the two views' remaining gaps don't overlap (verified by line inspection, not merged into one number); see `untestable-without-x.md`. `gather` now takes an injected `io.Reader` for stdin, and permission-denied paths are tested via `os.Chmod` guarded against root/Windows false-passes. |
 | `doc` (type) | n/a | n/a | a plain struct, no behavior |
 
 ## Harness inventory

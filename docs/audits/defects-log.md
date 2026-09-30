@@ -16,9 +16,13 @@ adversarial-skeptic verification each one survived before being trusted.
 - "Permutation-table trick" naming was wrong for what the code does (direct block-hash
   bucketing) — renamed in both `index.go` and `docs/architecture.md`.
 
-## Flagged, not fixed — a decision for the repo owner
+## Resolved after initial deferral
 
-- **Zero-value `Index` is silently non-functional** (`Add` accepts entries that never reach a
-  band table). Currently unreached in this repo (no call site constructs one this way).
-  Doc warning added; a stronger guard (panic on misuse, or a lazy default) is an API-behavior
-  choice, not applied without sign-off. See `audit-findings.md` dimension C #3.
+- **Zero-value `Index` was silently non-functional** (`Add` accepted entries that never
+  reached a band table). Originally left as a doc-only warning pending a decision; now fixed —
+  `Add` panics with a clear message when called on a zero-value `Index`. `NewIndex`/`LoadIndex`
+  results never trip the guard (verified: `TestConstructedIndexesNeverTripZeroValueGuard`). See
+  `audit-findings.md` dimension C #3.
+- **`gather`'s permission-denied and stdin-read-failure branches had no test.** Originally
+  deferred as needing a production seam change; the seam (an injectable `io.Reader` for stdin)
+  and a root/Windows-guarded `os.Chmod` test were added. See `untestable-without-x.md`.
