@@ -1,0 +1,36 @@
+name: ci
+on: { pull_request: {}, push: { branches: [main] } }
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env: { GOWORK: "off", GOPRIVATE: "github.com/netstar-labs" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+
+      # root module — the zero-dependency library + the app/ditto CLI
+      - run: go build ./... && go vet ./...
+      - run: go test -race ./... -count=1
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - run: go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+      - run: test -z "$(gofmt -l .)"
+      - name: root stays zero third-party deps
+        run: 'go list -m all | grep -v "^github.com/netstar-labs/ditto" | grep . && { echo "unexpected third-party dep"; exit 1; } || echo "zero-dep ok"'
+
+      # example/mcp — separate go.mod so the root library stays dependency-free
+      - run: cd example/mcp && go build ./... && go vet ./...
+      - run: cd example/mcp && test -z "$(gofmt -l .)"
+
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    env: { GOWORK: "off" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - name: fuzz each target briefly
+        run: |
+          go test -run '^$' -fuzz '^FuzzFingerprint$' -fuzztime 20s .
+          go test -run '^$' -fuzz '^FuzzIndex$'       -fuzztime 20s .
+          go test -run '^$' -fuzz '^FuzzLoadIndex$'   -fuzztime 20s .
