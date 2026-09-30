@@ -7,12 +7,7 @@ import (
 
 func TestIndexSaveLoad(t *testing.T) {
 	f := Default()
-	docs := []struct{ id, text string }{
-		{"p1", "Your Apple ID has been locked. Please verify your account now."},
-		{"p2", "Your Apple ID has been locked. Please verify your account now!"},
-		{"b1", "Weekly newsletter with this week's stories from around the web."},
-		{"b2", "Weekly newsletter with this week's stories from around the web."},
-	}
+	docs := sampleDocs // defined in index_test.go
 	ix := NewIndex(6)
 	for _, d := range docs {
 		ix.Add(d.id, f.Of(d.text))

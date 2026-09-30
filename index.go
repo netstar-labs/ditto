@@ -82,12 +82,12 @@ func (ix *Index) Add(id string, fp Fingerprint) {
 
 // candidates returns the deduped entry indices sharing at least one block with fp.
 func (ix *Index) candidates(fp Fingerprint) []int {
-	seen := make(map[int]struct{})
+	visited := make([]bool, len(ix.fps)) // call-local: as safe for concurrent Near as the map it replaces
 	var out []int
 	for i := range ix.tables {
 		for _, idx := range ix.tables[i][ix.block(fp, i)] {
-			if _, ok := seen[idx]; !ok {
-				seen[idx] = struct{}{}
+			if !visited[idx] {
+				visited[idx] = true
 				out = append(out, idx)
 			}
 		}
@@ -95,12 +95,18 @@ func (ix *Index) candidates(fp Fingerprint) []int {
 	return out
 }
 
+// clampK caps a queried k to the index's build-time K.
+func (ix *Index) clampK(k int) int {
+	if k > ix.k {
+		return ix.k
+	}
+	return k
+}
+
 // Near returns every indexed entry within k bits of fp, nearest first. k is
 // clamped to the index's build-time K.
 func (ix *Index) Near(fp Fingerprint, k int) []Match {
-	if k > ix.k {
-		k = ix.k
-	}
+	k = ix.clampK(k)
 	var out []Match
 	for _, idx := range ix.candidates(fp) {
 		if d := Distance(fp, ix.fps[idx]); d <= k {
@@ -119,9 +125,7 @@ func (ix *Index) Near(fp Fingerprint, k int) []Match {
 // within each cluster, clusters by descending size then first id. k is clamped to
 // the index's build-time K.
 func (ix *Index) Clusters(k, min int) [][]string {
-	if k > ix.k {
-		k = ix.k
-	}
+	k = ix.clampK(k)
 	n := len(ix.ids)
 	u := newUnionFind(n)
 	// One reusable generation-stamped visited slice for the whole call: visited[j]

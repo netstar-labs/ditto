@@ -5,14 +5,20 @@ import (
 	"testing"
 )
 
+// sampleDocs is shared with persist_test.go: two near-duplicate phishing
+// variants (p1/p2) and one exact duplicate pair (b1/b2), used to exercise both
+// Near and Clusters (and, in persist_test.go, that a save/load round-trip
+// preserves their results).
+var sampleDocs = []struct{ id, text string }{
+	{"p1", "Your Apple ID has been locked. Please verify your account now."},
+	{"p2", "Your Apple ID has been locked. Please verify your account now!"}, // near p1
+	{"b1", "Weekly newsletter with this week's stories from around the web."},
+	{"b2", "Weekly newsletter with this week's stories from around the web."}, // exact dup of b1
+}
+
 func TestIndexNearAndClusters(t *testing.T) {
 	f := Default()
-	docs := []struct{ id, text string }{
-		{"p1", "Your Apple ID has been locked. Please verify your account now."},
-		{"p2", "Your Apple ID has been locked. Please verify your account now!"}, // near p1
-		{"b1", "Weekly newsletter with this week's stories from around the web."},
-		{"b2", "Weekly newsletter with this week's stories from around the web."}, // exact dup of b1
-	}
+	docs := sampleDocs
 	ix := NewIndex(6)
 	for _, d := range docs {
 		ix.Add(d.id, f.Of(d.text))

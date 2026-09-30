@@ -68,28 +68,30 @@ func shingleWords(s string, n int, counts map[uint64]int) {
 func fnv1a(s string) uint64 {
 	h := uint64(fnvOffset)
 	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= fnvPrime
+		h = fnvStep(h, s[i])
 	}
 	return h
 }
 
 // hashWords hashes a space-joined word n-gram without allocating the join —
-// byte-identical to fnv1a(strings.Join(words, " ")).
+// byte-identical to fnv1a(strings.Join(words, " ")), expressed through the same
+// fnvStep so that equivalence is structural rather than two hand-copied loops.
 func hashWords(words []string) uint64 {
 	h := uint64(fnvOffset)
 	for i, wd := range words {
 		if i > 0 {
-			h ^= uint64(' ')
-			h *= fnvPrime
+			h = fnvStep(h, ' ')
 		}
 		for j := 0; j < len(wd); j++ {
-			h ^= uint64(wd[j])
-			h *= fnvPrime
+			h = fnvStep(h, wd[j])
 		}
 	}
 	return h
 }
+
+// fnvStep is one FNV-1a byte-mix step. A plain top-level function inlines
+// reliably, so this costs nothing over the hand-inlined version.
+func fnvStep(h uint64, b byte) uint64 { return (h ^ uint64(b)) * fnvPrime }
 
 const (
 	fnvOffset = 14695981039346656037

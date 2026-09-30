@@ -52,12 +52,20 @@ func usage() {
 	os.Exit(2)
 }
 
-func fingerprint(args []string) error {
-	fs := flag.NewFlagSet("fingerprint", flag.ExitOnError)
+// featurizerFlags registers the -char/-word flags shared by the fingerprint and
+// cluster subcommands. Call the returned func after fs.Parse, once the flag
+// values are populated.
+func featurizerFlags(fs *flag.FlagSet) func() ditto.Featurizer {
 	char := fs.Int("char", 4, "character n-gram length (0 disables)")
 	word := fs.Int("word", 0, "word n-gram length (0 disables)")
+	return func() ditto.Featurizer { return ditto.Featurizer{CharN: *char, WordN: *word} }
+}
+
+func fingerprint(args []string) error {
+	fs := flag.NewFlagSet("fingerprint", flag.ExitOnError)
+	featurizer := featurizerFlags(fs)
 	fs.Parse(args)
-	f := ditto.Featurizer{CharN: *char, WordN: *word}
+	f := featurizer()
 
 	docs, err := gather(fs.Args())
 	if err != nil {
@@ -81,10 +89,9 @@ func cluster(args []string) error {
 	fs := flag.NewFlagSet("cluster", flag.ExitOnError)
 	k := fs.Int("k", 3, "max Hamming distance for a near-duplicate")
 	min := fs.Int("min", 2, "minimum members to report a cluster")
-	char := fs.Int("char", 4, "character n-gram length (0 disables)")
-	word := fs.Int("word", 0, "word n-gram length (0 disables)")
+	featurizer := featurizerFlags(fs)
 	fs.Parse(args)
-	f := ditto.Featurizer{CharN: *char, WordN: *word}
+	f := featurizer()
 
 	docs, err := gather(fs.Args())
 	if err != nil {
