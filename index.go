@@ -27,7 +27,16 @@ type Match struct {
 // bench_test.go.
 //
 // Add fingerprints, then query with Near or group the whole set with Clusters. An
-// Index is not safe for concurrent Add; build it, then read.
+// Index is not safe for concurrent Add; build it, then read. Violating that
+// contract is undefined behavior, but note its character changed: candidates
+// (used by Near) once deduped through a map, whose out-of-range key access
+// never panics, so a concurrent Add raced with a read surfaced only as Go's
+// own unrecoverable "concurrent map read and map write" fatal error — never a
+// recoverable panic. It now dedupes through a slice sized from a snapshot of
+// Len, so the same misuse can also surface as an ordinary (recoverable) index-
+// out-of-range panic. Both signal the same contract violation; a caller using
+// recover() to contain misuse should not treat either as a softer signal than
+// the other.
 //
 // The zero value is not usable: always construct via [NewIndex] or [LoadIndex].
 // A zero-value Index accepts Add calls (Len grows) but never indexes anything

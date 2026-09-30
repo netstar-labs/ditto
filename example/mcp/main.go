@@ -10,9 +10,10 @@
 //
 //   - ditto_cluster is STATELESS: everything it needs arrives in the call, so it
 //     is useful the moment the server starts.
-//   - ditto_near is STATEFUL: it answers against an Index, and an EMPTY index
-//     matches nothing. See the note on nearIndex below for what it needs to be
-//     useful.
+//   - ditto_near is STATEFUL: it answers against an Index. Below it is seeded
+//     with two hardcoded example documents purely so it demonstrates a real
+//     hit out of the box — see the note on nearIndex for how a real deployment
+//     replaces that with its own corpus.
 package main
 
 import (
@@ -87,9 +88,9 @@ func main() {
 	nearIndex.Add("example-newsletter-1", seedF.Of("Weekly newsletter: this week's top stories from around the web, curated for you."))
 	must(srv.AddTool(mcp.Tool{
 		Name: "ditto_near",
-		Description: "Find near-duplicates of a document within a prewarmed corpus. Input: text, " +
-			"optional k (max Hamming distance, default 3). Returns matches (id, distance), nearest first. " +
-			"Only useful when the server's corpus index is populated.",
+		Description: "Find near-duplicates of a document within this server's corpus (in this example, " +
+			"two hardcoded sample documents — a real deployment replaces them with its own). Input: text, " +
+			"optional k (max Hamming distance, default 3). Returns matches (id, distance), nearest first.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"k":{"type":"integer","minimum":0}},"required":["text"]}`),
 	}, func(ctx context.Context, s *mcp.Session, raw json.RawMessage) (*mcp.CallToolResult, error) {
 		var in struct {

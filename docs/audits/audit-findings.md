@@ -77,6 +77,34 @@ stdin-id claim, both example READMEs, the `build/ditto` script description.
 **No dead exported surface found** — every exported identifier has a live caller in tests,
 the CLI, or an example (grepped across the whole module).
 
+## Final skeptic pass (2026-09-29, after L1/L2/L4 pre-flight)
+
+A fresh, independent skeptic was given the entire branch diff (not individual findings) and
+told to hunt for what the fixes themselves might have broken — re-deriving every doc claim
+from scratch rather than trusting this document. Re-confirmed independently (own methods, own
+runs, not reused from this pass): 100.0% coverage, zero exported API change (checked via
+`go doc -all` diff against `v0.1.0`, a stronger method than this doc's own grep), `satAdd64`
+against 2M random `big.Int`-checked pairs, the `Normalize` rewrite against a fresh 25.7M-exec
+differential fuzz, the symlink fix against shapes not in the test suite (symlink chains,
+circular symlinks, a 3000-entry mixed directory), and a full clean build/vet/test/fuzz run.
+
+Two real, previously-unflagged issues surfaced and were fixed:
+
+- **`candidates()`'s map→`[]bool` swap changes the failure mode under contract violation.**
+  Under a deliberately-broken "concurrent Add during Near" scenario (i.e. already-undefined
+  behavior — the doc has always said Add is not concurrent-safe), the old map-based version
+  could only ever fail as Go's unrecoverable "concurrent map read and map write" fatal error.
+  The new slice-based version can *also* fail as an ordinary, `recover()`-catchable
+  index-out-of-range panic (`ix.fps` can grow past the snapshotted `len` mid-call). Both
+  signal the same misuse, but a caller relying on `recover()` to contain contract violations
+  would previously always get a loud, uncatchable crash and now sometimes doesn't. Documented
+  on `Index`'s doc comment (not reverted — the perf win is real and in-contract usage is
+  unaffected; this is a defense-in-depth note, not a functional bug in supported usage).
+- **`example/mcp/main.go`'s `ditto_near` tool description and package doc went stale the
+  moment the seeding fix landed** — both still described the index as possibly-empty /
+  "only useful when populated" after the same commit made it always non-empty. Reworded both
+  to describe what the code now actually does.
+
 ## Followups deferred to later passes
 
 - **Zero-value `Index` guard** (dimension C #3 above) — a decision for you, not applied.
