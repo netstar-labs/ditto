@@ -12,11 +12,19 @@ type Match struct {
 	Distance    int
 }
 
-// Index finds near-duplicates in better-than-O(n²) time with banded lookup (the
-// permutation-table trick from the Google near-dup crawl paper). Built for a
+// Index finds near-duplicates in better-than-O(n²) time with banded lookup: a
+// block-partition bucketing scheme, per the pigeonhole guarantee used in the
+// Google near-dup crawl paper (no bit permutation is performed). Built for a
 // maximum Hamming distance k, it splits each 64-bit fingerprint into k+1 blocks;
 // by the pigeonhole principle any two fingerprints within k bits share at least
 // one identical block, so only fingerprints colliding on a block are compared.
+//
+// The sub-quadratic guarantee assumes band buckets stay small, which holds when
+// near-duplicates are the exception. A corpus dominated by many mutually
+// near-duplicate documents (e.g. a mass-identical spam blast) makes every member
+// share a bucket with every other, so Near/Clusters degrade toward O(n²) for that
+// cluster — inherent to banding, not a bug; see index_test.go's quadratic-blowup
+// benchmark.
 //
 // Add fingerprints, then query with Near or group the whole set with Clusters. An
 // Index is not safe for concurrent Add; build it, then read.
@@ -34,7 +42,7 @@ func NewIndex(k int) *Index {
 	if k < 0 {
 		k = 0
 	}
-	if k > 63 { // 64-bit fingerprint: more than 63 differing bits is meaningless
+	if k > 63 { // each of the k+1 blocks needs at least 1 bit; 64 blocks is the max
 		k = 63
 	}
 	blocks := k + 1

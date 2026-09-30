@@ -1,8 +1,8 @@
 // Command ditto fingerprints documents and finds near-duplicates with SimHash.
 //
-//	ditto fingerprint [-char N] [-word N] [files/dirs...]   # fingerprint <tab> id per input
+//	ditto fingerprint [-char N] [-word N] [files/dirs...]   # fingerprint <tab> id per input (alias: fp)
 //	ditto cluster     [-k N] [-min M] [-char N] [-word N] [files/dirs...]  # near-duplicate families
-//	ditto version
+//	ditto version                                           # aliases: -v, -version, --version
 //
 // Inputs are files, directories (walked), or a single document on stdin. Each
 // input file is one document; its id is its path (or "stdin").

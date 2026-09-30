@@ -57,9 +57,9 @@ ditto version                                   # version + pipeline id
 
 | Command | Flags | Meaning |
 |---|---|---|
-| `fingerprint` | `-char N` (4), `-word N` (0) | print `fingerprint<tab>id` per input |
-| `cluster` | `-k N` (3), `-min M` (2), `-char`, `-word` | group inputs into near-dup families |
-| `version` | — | binary version + `PipelineVersion` |
+| `fingerprint` (alias `fp`) | `-char N` (4), `-word N` (0) | print `fingerprint<tab>id` per input |
+| `cluster` | `-k N` (3), `-min M` (2), `-char N` (4), `-word N` (0) | group inputs into near-dup families |
+| `version` (alias `-v`, `-version`, `--version`) | — | binary version + `PipelineVersion` |
 
 ## Choosing k
 
