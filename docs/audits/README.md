@@ -1,6 +1,6 @@
 # Audits
 
-House audit trail, per the org's `A1`/`L1`/`L2` process (`netstar-labs/handbook`).
+House audit trail, per the org's internal `A1`/`L1`/`L2` engineering process.
 
 | Doc | Pass | Content |
 |---|---|---|
