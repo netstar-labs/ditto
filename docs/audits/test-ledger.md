@@ -30,7 +30,7 @@ that kind exists and passes; percentages are `go test -coverprofile` (in-process
 
 ## `github.com/netstar-labs/ditto/app/ditto` (CLI) — combined coverage, two styles
 
-In-process (`go test -coverprofile`, `main_test.go`): 28.4% alone — by design, since
+In-process (`go test -coverprofile`, `main_test.go`): 36.8% alone — by design, since
 `main`/`usage` call `os.Exit` directly and cannot run in the test process. Subprocess/binary
 coverage (`cli_test.go` + `GOCOVERDIR`, `go tool covdata`): the complementary view.
 
