@@ -17,7 +17,8 @@ again*.
 - A 64-bit fingerprint per document — compact enough to store on every record and
   compare with one instruction.
 - Near-duplicate lookup and whole-corpus clustering in better than O(n²), via a
-  banded (permutation-table) index.
+  banded index — block-partition bucketing per the pigeonhole guarantee, not a
+  bit-permutation scheme.
 - **No tokenizer, no model, no dependencies** — character shingles by default,
   standard library only, so it runs inline at capture as easily as offline in
   batch.

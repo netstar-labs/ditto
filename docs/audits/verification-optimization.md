@@ -85,7 +85,7 @@ against this phase's checklist:
   controls by choosing what to feed in; there is no network/RPC boundary sizing anything).
 - **Integer overflow:** `Sum`'s accumulator overflow was the one real finding (fixed, A1,
   dimension C #2).
-- **DoS / regex:** no regexes anywhere in the codebase (`grep -rn regexp` — zero hits). N/A.
+- **DoS / regex:** no regexes in any production code path (`grep -rln regexp --include="*.go" . | grep -v _test.go` — zero hits); `app/ditto/cli_test.go` uses `regexp` only to match test output, never on untrusted input. N/A.
 
 ## Phase 4/5 — performance analysis and optimization plan
 
